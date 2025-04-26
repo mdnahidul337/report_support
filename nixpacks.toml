@@ -5,4 +5,4 @@ nixpkgs = ["python310", "gcc"]
 cmds = ["pip install -r requirements.txt"]
 
 [phases.start]
-cmd = "python bot.py"
+cmd = "python app.py"
