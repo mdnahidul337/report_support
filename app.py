@@ -14,6 +14,7 @@ TOKEN = "7643025446:AAHPQgytUtqHz_wB-9y-OziM8aucimPvThw"
 def handle_message(update: Update, context: CallbackContext):
     message = update.effective_message
     chat = message.chat
+    user = message.from_user
 
     # Check if message is from group
     if chat.type not in ['group', 'supergroup']:
@@ -34,6 +35,9 @@ def handle_message(update: Update, context: CallbackContext):
     if not admin_mentioned:
         return
 
+    # Get user's full name
+    full_name = f"{user.first_name} {user.last_name}" if user.last_name else user.first_name
+
     # Reply in group
     message.reply_text("✅ রিপোর্টটি অ্যাডমিনদের কাছে পাঠানো হয়েছে। গ্রুপে যুক্ত থাকতে হবে।")
 
@@ -44,17 +48,24 @@ def handle_message(update: Update, context: CallbackContext):
         logger.error(f"Error getting admins: {e}")
         return
 
-    # Prepare report message
+    # Prepare report message with personal name
     report_msg = (
         f"🚨 নতুন রিপোর্ট!\n\n"
         f"📛 গ্রুপ: {chat.title}\n"
-        f"👤 ব্যবহারকারী: {message.from_user.mention_html()}\n"
+        f"👤 ব্যবহারকারী: {user.mention_html()}\n"
+        f"📛 নাম: {full_name}\n"
+        f"🆔 আইডি: {user.id}\n"
         f"💬 মেসেজ: {text}\n\n"
         f"👉 মেসেজ দেখতে নিচের বাটনে ক্লিক করুন"
     )
 
-    # Create message link button
-    keyboard = [[InlineKeyboardButton("ভিউ মেসেজ", url=message.link)]]
+    # Create buttons
+    keyboard = [
+        [
+            InlineKeyboardButton("মেসেজ দেখুন", url=message.link),
+            InlineKeyboardButton("প্রোফাইল দেখুন", url=f"tg://user?id={user.id}")
+        ]
+    ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     # Send to admins
@@ -73,7 +84,6 @@ def main():
     updater = Updater(TOKEN)
     dp = updater.dispatcher
 
-    # Add handler for group messages
     dp.add_handler(MessageHandler(
         Filters.chat_type.groups & (Filters.text | Filters.caption),
         handle_message
