@@ -35,7 +35,7 @@ async def report_to_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # রিপোর্টারের রিপ্লাই
         await message.reply_text("✅ রিপোর্টটি অ্যাডমিনদের কাছে পাঠানো হয়েছে। ধন্যবাদ।")
 
-app = ApplicationBuilder().token('YOUR_BOT_TOKEN').build()
+app = ApplicationBuilder().token('7643025446:AAHPQgytUtqHz_wB-9y-OziM8aucimPvThw').build()
 
 # টেক্সট মেসেজে যদি @admin থাকে, তখন হ্যান্ডলার চালাবে
 app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), report_to_admin))
