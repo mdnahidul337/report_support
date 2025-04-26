@@ -2,7 +2,7 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes
 
 # এখানে তোমার অ্যাডমিনদের Telegram user ID বসাও
-ADMIN_IDS = [123456789, 987654321]  # এখানে তোমার অ্যাডমিনদের টেলিগ্রাম ID দিবে
+ADMIN_IDS = [6017525126, 6347226702]  # এখানে তোমার অ্যাডমিনদের টেলিগ্রাম ID দিবে
 
 # রিপোর্ট ফাংশন
 async def report_to_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
