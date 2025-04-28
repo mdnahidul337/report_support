@@ -169,24 +169,82 @@ async def handle_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE
     except Exception as e:
         logger.error(f"Failed to notify user: {e}")
 
+async def handle_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        # ... [পূর্বের কোড অপরিবর্তিত]
+
+        # Create buttons with GROUP ID in callback data
+        keyboard = [
+            [
+                InlineKeyboardButton("✅ Accept", callback_data=f"accept_{reported_user.id}_{reporter_user.id}_{update.message.chat.id}"),
+                InlineKeyboardButton("❌ Reject", callback_data=f"reject_{reported_user.id}_{reporter_user.id}_{update.message.chat.id}")
+            ],
+            [
+                InlineKeyboardButton("📩 View Message", url=message.link)
+            ]
+        ]
+
+        # ... [বাকি কোড অপরিবর্তিত]
+
+async def handle_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    data = query.data.split('_')
+    action = data[0]
+    reported_user_id = int(data[1])
+    reporter_user_id = int(data[2])
+    group_id = int(data[3])  # নতুন: গ্রুপ আইডি যোগ করা হয়েছে
+
+    # ... [পূর্বের কোড অপরিবর্তিত]
+
     # Handle multiple rejections
     if action == "reject":
-        reporter_id = str(reporter_user_id)
-        if bot_data.data["report_counts"].get(reporter_id, 0) >= 3:
+        reporter_id_str = str(reporter_user_id)
+        
+        # শুধুমাত্র রিজেক্ট হলে কাউন্ট বাড়ানো
+        bot_data.data["report_counts"][reporter_id_str] = bot_data.data["report_counts"].get(reporter_id_str, 0) + 1
+        bot_data.save_data()
+
+        # ৩টি রিজেক্ট চেক
+        if bot_data.data["report_counts"][reporter_id_str] >= 3:
             try:
+                # বটের অ্যাডমিন স্ট্যাটাস চেক
+                bot_member = await context.bot.get_chat_member(group_id, context.bot.id)
+                if bot_member.status != "administrator":
+                    raise Exception("বটটি এই গ্রুপে অ্যাডমিন নয়")
+
+                # মিউট করার সময় সেটিংস
                 until_date = datetime.now() + timedelta(minutes=30)
                 await context.bot.restrict_chat_member(
-                    chat_id=query.message.chat.id,
+                    chat_id=group_id,  # সঠিক গ্রুপ আইডি ব্যবহার
                     user_id=reporter_user_id,
-                    permissions=ChatPermissions(),
+                    permissions=ChatPermissions(
+                        can_send_messages=False,
+                        can_send_media_messages=False,
+                        can_send_other_messages=False,
+                        can_add_web_page_previews=False
+                    ),
                     until_date=until_date
                 )
+                
+                # নোটিফিকেশন পাঠানো
                 await context.bot.send_message(
-                    chat_id=query.message.chat.id,
-                    text=f"⚠️ ব্যবহারকারী {reporter_user_id} কে 30 মিনিটের জন্য মিউট করা হয়েছে"
+                    chat_id=group_id,
+                    text=f"⚠️ ব্যবহারকারী [{reporter_user_id}](tg://user?id={reporter_user_id}) কে 30 মিনিটের জন্য মিউট করা হয়েছে",
+                    parse_mode="Markdown"
                 )
+                
+                # কাউন্টার রিসেট
+                bot_data.data["report_counts"][reporter_id_str] = 0
+                bot_data.save_data()
+
             except Exception as e:
-                logger.error(f"Mute failed: {e}")
+                logger.error(f"মিউট ব্যর্থ: {str(e)}")
+                await context.bot.send_message(
+                    chat_id=query.message.chat_id,
+                    text=f"❌ ত্রুটি: {str(e)}"
+                )
 
 async def handle_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not bot_data.data["bot_active"]:
