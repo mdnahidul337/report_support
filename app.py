@@ -6,10 +6,8 @@ from telegram import (
     Update,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
-    Bot,
     MessageEntity,
-    ChatPermissions,
-    Chat
+    ChatPermissions
 )
 from telegram.ext import (
     Application,
@@ -17,8 +15,7 @@ from telegram.ext import (
     ContextTypes,
     MessageHandler,
     filters,
-    CallbackQueryHandler,
-    ConversationHandler
+    CallbackQueryHandler
 )
 from dotenv import load_dotenv
 
@@ -27,7 +24,6 @@ load_dotenv()
 # Configuration
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_IDS = list(map(int, os.getenv("ADMIN_IDS", "").split(',')))
-REPORT_GROUP = os.getenv("REPORT_GROUP")
 DATA_FILE = "bot_data.json"
 
 # Logging
@@ -37,63 +33,68 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Data Manager Class
-class BotDataManager:
+class BotData:
     def __init__(self):
-        self.data = {
-            "links": [],
-            "report_counts": {},
-            "bot_active": True
-        }
+        self.links = []
+        self.report_counts = {}
         self.load_data()
 
     def load_data(self):
         try:
             with open(DATA_FILE, "r") as f:
-                self.data = json.load(f)
+                data = json.load(f)
+                self.links = data.get("links", [])
+                self.report_counts = data.get("report_counts", {})
         except (FileNotFoundError, json.JSONDecodeError):
             self.save_data()
 
     def save_data(self):
         with open(DATA_FILE, "w") as f:
-            json.dump(self.data, f, indent=2)
+            json.dump({
+                "links": self.links,
+                "report_counts": self.report_counts
+            }, f, indent=2)
 
-bot_data = BotDataManager()
+bot_data = BotData()
 
+# ------------------ 핸들러 ফাংশন ------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("রিপোর্ট করতে মেসেজে রিপ্লাই করে @admin লিখুন")
 
 async def handle_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        if not bot_data.data["bot_active"] or not update.message.reply_to_message:
+        if not update.message.reply_to_message:
             return
 
-        reported_user = update.message.reply_to_message.from_user
-        reporter_user = update.message.from_user
+        # Check @admin mention
+        if not any(entity.type == MessageEntity.MENTION for entity in update.message.entities):
+            return
+
+        reporter = update.message.from_user
+        reported = update.message.reply_to_message.from_user
         group_id = update.message.chat.id
 
-        # Check bot's group status
+        # Check bot's admin status
         try:
             bot_member = await context.bot.get_chat_member(group_id, context.bot.id)
-            if bot_member.status not in ["administrator", "member"]:
+            if bot_member.status != "administrator":
+                await update.message.reply_text("⚠️ বটকে অ্যাডমিন করুন")
                 return
         except Exception as e:
-            logger.error(f"Bot check failed: {str(e)}")
+            logger.error(f"Admin check failed: {str(e)}")
             return
 
         # Prepare report
-        report_text = f"""
+        report_msg = f"""
 🚨 নতুন রিপোর্ট 🚨
-রিপোর্টকারী: {reporter_user.mention_html()}
-অভিযুক্ত: {reported_user.mention_html()}
+রিপোর্টকারী: {reporter.mention_html()}
+অভিযুক্ত: {reported.mention_html()}
 গ্রুপ: {update.message.chat.title}
         """
-
-        # Create buttons with group ID
         keyboard = [
             [
-                InlineKeyboardButton("✅ Accept", callback_data=f"accept_{reported_user.id}_{reporter_user.id}_{group_id}"),
-                InlineKeyboardButton("❌ Reject", callback_data=f"reject_{reported_user.id}_{reporter_user.id}_{group_id}")
+                InlineKeyboardButton("✅ Accept", callback_data=f"accept_{reported.id}_{reporter.id}_{group_id}"),
+                InlineKeyboardButton("❌ Reject", callback_data=f"reject_{reported.id}_{reporter.id}_{group_id}")
             ],
             [InlineKeyboardButton("📩 View", url=update.message.reply_to_message.link)]
         ]
@@ -102,19 +103,14 @@ async def handle_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for admin_id in ADMIN_IDS:
             await context.bot.send_message(
                 admin_id,
-                text=report_text,
+                text=report_msg,
                 reply_markup=InlineKeyboardMarkup(keyboard),
                 parse_mode="HTML"
             )
 
-        # Confirmation message
-        confirmation = await update.message.reply_text("✅ রিপোর্ট পাঠানো হয়েছে")
-        if context.job_queue:
-            context.job_queue.run_once(
-                callback=lambda ctx: ctx.bot.delete_message(ctx.job.chat_id, ctx.job.message_id),
-                when=10,
-                data={"chat_id": confirmation.chat_id, "message_id": confirmation.message_id}
-            )
+        # Confirm in group
+        msg = await update.message.reply_text("✅ রিপোর্ট পাঠানো হয়েছে")
+        await context.bot.delete_message(update.message.chat.id, msg.message_id)
 
     except Exception as e:
         logger.error(f"Report error: {str(e)}")
@@ -124,54 +120,48 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
     data = query.data.split('_')
-    action = data[0]
-    reported_id = int(data[1])
-    reporter_id = int(data[2])
-    group_id = int(data[3])
+    action, reported_id, reporter_id, group_id = data[0], int(data[1]), int(data[2]), int(data[3])
 
-    # স্ট্যাটাস আপডেট
+    # Update report status
     await query.edit_message_text(f"{query.message.text}\nস্ট্যাটাস: {'✅ Accepted' if action == 'accept' else '❌ Rejected'}")
 
-    # রিজেক্ট হ্যান্ডলিং
+    # Handle reject
     if action == "reject":
         reporter_str = str(reporter_id)
-        bot_data.data["report_counts"][reporter_str] = bot_data.data["report_counts"].get(reporter_str, 0) + 1
+        bot_data.report_counts[reporter_str] = bot_data.report_counts.get(reporter_str, 0) + 1
         bot_data.save_data()
 
-        if bot_data.data["report_counts"][reporter_str] >= 3:
+        if bot_data.report_counts[reporter_str] >= 3:
             try:
-                # মিউট লজিক
-                until_date = datetime.now() + timedelta(minutes=30)
+                until = datetime.now() + timedelta(minutes=30)
                 await context.bot.restrict_chat_member(
                     chat_id=group_id,
                     user_id=reporter_id,
                     permissions=ChatPermissions(can_send_messages=False),
-                    until_date=until_date
+                    until_date=until
                 )
                 await context.bot.send_message(
-                    chat_id=group_id,
-                    text=f"⛔ ব্যবহারকারী [{reporter_id}](tg://user?id={reporter_id}) কে 30 মিনিটের জন্য মিউট করা হয়েছে",
+                    group_id,
+                    f"⛔ ব্যবহারকারী [{reporter_id}](tg://user?id={reporter_id}) কে 30 মিনিটের জন্য মিউট করা হয়েছে",
                     parse_mode="Markdown"
                 )
-                bot_data.data["report_counts"][reporter_str] = 0
+                bot_data.report_counts[reporter_str] = 0
                 bot_data.save_data()
             except Exception as e:
-                logger.error(f"মিউট ব্যর্থ: {str(e)}")
+                logger.error(f"Mute error: {str(e)}")
+                await query.message.reply_text(f"❌ ত্রুটি: {str(e)}")
 
-    # নোটিফিকেশন সিস্টেম
+    # Send notification
     try:
-        # ডিএম চেষ্টা
-        await context.bot.send_chat_action(reporter_id, "typing")
         await context.bot.send_message(
             reporter_id,
             f"📢 আপনার রিপোর্টটি {'গ্রহণ' if action == 'accept' else 'প্রত্যাখ্যান'} করা হয়েছে"
         )
     except Exception as e:
-        logger.error(f"ডিএম ব্যর্থ: {str(e)}")
-        # গ্রুপে নোটিফিকেশন
+        logger.error(f"DM failed: {str(e)}")
         await context.bot.send_message(
             group_id,
-            f"🔔 ব্যবহারকারী [{reporter_id}](tg://user?id={reporter_id}) কে নোটিফিকেশন পাঠানো যায়নি",
+            f"🔔 ব্যবহারকারী [{reporter_id}](tg://user?id={reporter_id}) কে নোটিফাই করা যায়নি",
             parse_mode="Markdown"
         )
 
@@ -185,7 +175,7 @@ def main():
         handle_report
     ))
     app.add_handler(CallbackQueryHandler(handle_button, pattern=r"^(accept|reject)_"))
-
+    
     app.run_polling()
 
 if __name__ == "__main__":
