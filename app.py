@@ -40,6 +40,7 @@ class BotData:
         self.links = []
         self.report_counts = {}
         self.last_link_number = 0
+        self.user_messages = {}  # UserID: [MessageIDs]
         self.load_data()
 
     def load_data(self):
@@ -49,6 +50,7 @@ class BotData:
                 self.links = data.get("links", [])
                 self.report_counts = data.get("report_counts", {})
                 self.last_link_number = data.get("last_link_number", 0)
+                self.user_messages = data.get("user_messages", {})
         except (FileNotFoundError, json.JSONDecodeError):
             self.save_data()
 
@@ -57,7 +59,8 @@ class BotData:
             json.dump({
                 "links": self.links,
                 "report_counts": self.report_counts,
-                "last_link_number": self.last_link_number
+                "last_link_number": self.last_link_number,
+                "user_messages": self.user_messages
             }, f, indent=2)
 
 bot_data = BotData()
@@ -91,31 +94,35 @@ async def handle_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ কোনো লিংক পাওয়া যায়নি!")
         return
 
+    user_id = update.message.from_user.id
+    chat_id = update.message.chat.id
+
     # Delete previous messages
-    if update.message.from_user.id in bot_data.user_messages:
-        for msg_id in bot_data.user_messages[update.message.from_user.id]:
+    if user_id in bot_data.user_messages:
+        for msg_id in bot_data.user_messages[user_id]:
             try:
-                await context.bot.delete_message(update.message.chat.id, msg_id)
-            except:
-                pass
+                await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
+            except Exception as e:
+                logger.error(f"মেসেজ ডিলিট ব্যর্থ: {str(e)}")
+        bot_data.user_messages[user_id] = []
 
     # Create new message
-    links_text = "📥 ডাউনলোড লিংকসমূহ:\n\n"
+    links_text = "📥 **ডাউনলোড লিংকসমূহ:**\n\n"
     keyboard = []
     for link in bot_data.links:
-        links_text += f"{link['number']}.🔗 [ডাউনলোড করুন]({link['url']}) [{link['date']}]\n"
+        links_text += f"{link['number']}. 🔗 [{link['date']}]({link['url']})\n"
         keyboard.append([InlineKeyboardButton(f"লিংক {link['number']}", url=link['url'])])
 
     reply_markup = InlineKeyboardMarkup(keyboard)
     sent_message = await update.message.reply_text(
-        links_text,
+        text=links_text,
         reply_markup=reply_markup,
         parse_mode="Markdown",
         disable_web_page_preview=True
     )
     
-    # Store message ID
-    bot_data.user_messages[update.message.from_user.id] = [sent_message.message_id]
+    # Store new message ID
+    bot_data.user_messages[user_id] = [sent_message.message_id]
     bot_data.save_data()
 
 async def manage_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -174,6 +181,7 @@ async def delete_all_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     bot_data.links = []
     bot_data.last_link_number = 0
+    bot_data.user_messages = {}
     bot_data.save_data()
     await query.edit_message_text("✅ সব লিংক ডিলিট করা হয়েছে!")
 
@@ -182,7 +190,6 @@ async def handle_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not update.message.reply_to_message:
             return
 
-        # Check @admin mention
         if not any(entity.type == MessageEntity.MENTION for entity in update.message.entities):
             return
 
@@ -190,7 +197,7 @@ async def handle_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reported = update.message.reply_to_message.from_user
         group_id = update.message.chat.id
 
-        # Check bot's admin status
+        # Check bot admin status
         try:
             bot_member = await context.bot.get_chat_member(group_id, context.bot.id)
             if bot_member.status != "administrator":
@@ -202,7 +209,7 @@ async def handle_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Prepare report
         report_msg = f"""
-🚨 নতুন রিপোর্ট 🚨
+🚨 **নতুন রিপোর্ট** 🚨
 রিপোর্টকারী: {reporter.mention_html()}
 অভিযুক্ত: {reported.mention_html()}
 গ্রুপ: {update.message.chat.title}
@@ -264,13 +271,13 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await query.message.reply_text(f"❌ ত্রুটি: {str(e)}")
 
     # Send notification
-    try:  # ইন্ডেন্টেশন ঠিক করুন (৪ স্পেস)
+    try:
         await context.bot.send_message(
             reporter_id,
             f"📢 আপনার রিপোর্টটি {'গ্রহণ' if action == 'accept' else 'প্রত্যাখ্যান'} করা হয়েছে"
         )
     except Exception as e:
-        logger.error(f"DM failed: {str(e)}")  # f-স্ট্রিং ঠিক করুন
+        logger.error(f"DM failed: {str(e)}")
         await context.bot.send_message(
             group_id,
             f"🔔 ব্যবহারকারী [{reporter_id}](tg://user?id={reporter_id}) কে নোটিফিকেশন পাঠানো যায়নি\n"
@@ -280,7 +287,6 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 def main():
-    # Kill existing processes
     if os.name == 'posix':
         os.system("pkill -f app.py")
     else:
