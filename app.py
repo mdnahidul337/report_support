@@ -264,18 +264,21 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await query.message.reply_text(f"❌ ত্রুটি: {str(e)}")
 
     # Send notification
-    try:
-        await context.bot.send_message(
-            reporter_id,
-            f"📢 আপনার রিপোর্টটি {'গ্রহণ' if action == 'accept' else 'প্রত্যাখ্যান'} করা হয়েছে"
-        )
-    except Exception as e:
-        logger.error(f"DM failed: {str(e)}")
-        await context.bot.send_message(
-            group_id,
-            f"📢 আপনার রিপোর্টটি {'গ্রহণ' if action == 'accept' else 'প্রত্যাখ্যান'} করা হয়েছে",
-            parse_mode="Markdown"
-        )
+  try:
+    await context.bot.send_message(
+        reporter_id,
+        f"📢 আপনার রিপোর্টটি {'গ্রহণ' if action == 'accept' else 'প্রত্যাখ্যান'} করা হয়েছে"
+    )
+except Exception as e:
+    logger.error(f"DM failed: {str(e)}")
+    # গ্রুপে নোটিফিকেশন + ইউজার আইডি যোগ করুন
+    await context.bot.send_message(
+        group_id,
+        f"🔔 ব্যবহারকারী [{reporter_id}](tg://user?id={reporter_id}) কে নোটিফিকেশন পাঠানো যায়নি\n"
+        f"ইউজার আইডি: `{reporter_id}`\n"
+        f"স্ট্যাটাস: {'গ্রহণ' if action == 'accept' else 'প্রত্যাখ্যান'}",
+        parse_mode="Markdown"
+    )
 
 def main():
     # Kill existing processes
