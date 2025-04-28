@@ -199,12 +199,15 @@ def main():
     
     # Conversation Handler
     conv_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(import_links, pattern="^import_links")],
-        states={
-            "IMPORT_LINKS": [MessageHandler(filters.Document.ALL, handle_import)]
-        },
-        fallbacks=[]
-    )
+    entry_points=[CallbackQueryHandler(import_links, pattern="^import_links")],
+    states={
+        "IMPORT_LINKS": [MessageHandler(filters.Document.ALL, handle_import)]
+    },
+    fallbacks=[],
+    per_message=True,  # নতুন লাইন যোগ করুন
+    per_chat=True,     # ডিফল্ট সেটিংস নিশ্চিত করুন
+    per_user=True      # ব্যবহারকারী ভিত্তিক ট্র্যাকিং
+)
     app.add_handler(conv_handler)
 
     app.run_polling()
