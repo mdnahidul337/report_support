@@ -129,55 +129,51 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reporter_id = int(data[2])
     group_id = int(data[3])
 
-    # Update report status
-    await query.edit_message_text(f"{query.message.text}\nস্ট্যাটাস: {'Accepted' if action == 'accept' else 'Rejected'}")
+    # স্ট্যাটাস আপডেট
+    await query.edit_message_text(f"{query.message.text}\nস্ট্যাটাস: {'✅ Accepted' if action == 'accept' else '❌ Rejected'}")
 
-    # Handle rejection
+    # রিজেক্ট হ্যান্ডলিং
     if action == "reject":
         reporter_str = str(reporter_id)
         bot_data.data["report_counts"][reporter_str] = bot_data.data["report_counts"].get(reporter_str, 0) + 1
+        bot_data.save_data()
 
         if bot_data.data["report_counts"][reporter_str] >= 3:
             try:
-                # Check supergroup
-                chat = await context.bot.get_chat(group_id)
-                if chat.type != Chat.SUPERGROUP:
-                    raise ValueError("শুধুমাত্র সুপারগ্রুপে মিউট সম্ভব")
-
-                # Check admin
-                bot_member = await context.bot.get_chat_member(group_id, context.bot.id)
-                if not bot_member.status == "administrator":
-                    raise PermissionError("বট অ্যাডমিন নয়")
-
-                # Mute user
-                until = datetime.now() + timedelta(minutes=30)
+                # মিউট লজিক
+                until_date = datetime.now() + timedelta(minutes=30)
                 await context.bot.restrict_chat_member(
                     chat_id=group_id,
                     user_id=reporter_id,
                     permissions=ChatPermissions(can_send_messages=False),
-                    until_date=until
+                    until_date=until_date
                 )
                 await context.bot.send_message(
-                    group_id,
-                    f"⚠️ ব্যবহারকারী {reporter_id} কে 30 মিনিটের জন্য মিউট করা হয়েছে"
+                    chat_id=group_id,
+                    text=f"⛔ ব্যবহারকারী [{reporter_id}](tg://user?id={reporter_id}) কে 30 মিনিটের জন্য মিউট করা হয়েছে",
+                    parse_mode="Markdown"
                 )
                 bot_data.data["report_counts"][reporter_str] = 0
-
+                bot_data.save_data()
             except Exception as e:
-                logger.error(f"Mute failed: {str(e)}")
-                await context.bot.send_message(
-                    query.message.chat_id,
-                    f"❌ ত্রুটি: {str(e)}"
-                )
+                logger.error(f"মিউট ব্যর্থ: {str(e)}")
 
-        bot_data.save_data()
-
-    # Send notification
+    # নোটিফিকেশন সিস্টেম
     try:
-        await context.bot.send_message(reporter_id, f"রিপোর্ট {action} হয়েছে")
+        # ডিএম চেষ্টা
+        await context.bot.send_chat_action(reporter_id, "typing")
+        await context.bot.send_message(
+            reporter_id,
+            f"📢 আপনার রিপোর্টটি {'গ্রহণ' if action == 'accept' else 'প্রত্যাখ্যান'} করা হয়েছে"
+        )
     except Exception as e:
-        logger.error(f"Notify failed: {str(e)}")
-        await query.message.reply_text(f"⚠️ ইউজারকে নোটিফাই করা যায়নি: {str(e)}")
+        logger.error(f"ডিএম ব্যর্থ: {str(e)}")
+        # গ্রুপে নোটিফিকেশন
+        await context.bot.send_message(
+            group_id,
+            f"🔔 ব্যবহারকারী [{reporter_id}](tg://user?id={reporter_id}) কে নোটিফিকেশন পাঠানো যায়নি",
+            parse_mode="Markdown"
+        )
 
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
