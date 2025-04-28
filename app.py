@@ -273,7 +273,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"DM failed: {str(e)}")
         await context.bot.send_message(
             group_id,
-            f"🔔 ব্যবহারকারী [{reporter_id}](tg://user?id={reporter_id}) কে নোটিফাই করা যায়নি",
+            f"📢 আপনার রিপোর্টটি {'গ্রহণ' if action == 'accept' else 'প্রত্যাখ্যান'} করা হয়েছে",
             parse_mode="Markdown"
         )
 
