@@ -195,10 +195,13 @@ async def delete_all_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
+        # শুধুমাত্র রিপ্লাই করা মেসেজ চেক করুন
         if not update.message.reply_to_message:
             return
 
-        if not any(entity.type == MessageEntity.MENTION for entity in update.message.entities):
+        # শুধুমাত্র @admin মেনশন চেক করুন
+        if not any(entity.type == MessageEntity.MENTION and entity.user.username == 'admin' 
+                   for entity in update.message.entities):
             return
 
         reporter = update.message.from_user
@@ -396,7 +399,7 @@ def main():
         app.add_handler(CommandHandler("help", help_command))
         app.add_handler(CommandHandler("Qus", add_auto_reply))
         app.add_handler(MessageHandler(
-            filters.TEXT & filters.Entity(MessageEntity.MENTION),
+            filters.TEXT & filters.Entity(MessageEntity.MENTION) & filters.REPLY, # রিপ্লাই ফিল্টার যোগ করা হয়েছে
             handle_report
         ))
         app.add_handler(MessageHandler(
