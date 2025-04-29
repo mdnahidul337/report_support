@@ -7,7 +7,6 @@ from telegram import (
     Update,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
-    MessageEntity,
     ChatPermissions
 )
 from telegram.ext import (
@@ -73,7 +72,7 @@ class BotData:
 
 bot_data = BotData()
 
-# ------------------ 핸들러 ফাংশন ------------------
+# ------------------ Handler Functions ------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("রিপোর্ট করতে মেসেজে রিপ্লাই করে @admin লিখুন")
 
@@ -195,13 +194,10 @@ async def delete_all_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        # শুধুমাত্র রিপ্লাই করা মেসেজ চেক করুন
         if not update.message.reply_to_message:
             return
 
-        # শুধুমাত্র @admin মেনশন চেক করুন
-        if not any(entity.type == MessageEntity.MENTION and entity.user.username == 'admin' 
-                   for entity in update.message.entities):
+        if not (update.message.text and '@admin' in update.message.text.lower()):
             return
 
         reporter = update.message.from_user
@@ -388,9 +384,6 @@ def main():
                 ]
             },
             fallbacks=[CommandHandler("cancel", lambda u,c: ConversationHandler.END)],
-            per_message=True,
-            per_chat=True,
-            per_user=True
         )
 
         app.add_handler(CommandHandler("start", start))
@@ -399,7 +392,7 @@ def main():
         app.add_handler(CommandHandler("help", help_command))
         app.add_handler(CommandHandler("Qus", add_auto_reply))
         app.add_handler(MessageHandler(
-            filters.TEXT & filters.Entity(MessageEntity.MENTION) & filters.REPLY, # রিপ্লাই ফিল্টার যোগ করা হয়েছে
+            filters.TEXT & filters.REPLY & filters.Regex(r'@admin', re.IGNORECASE),
             handle_report
         ))
         app.add_handler(MessageHandler(
@@ -415,11 +408,8 @@ def main():
         app.add_handler(CallbackQueryHandler(delete_all_links, pattern="^delete_all_links"))
         app.add_handler(CallbackQueryHandler(export_links, pattern="^export_links"))
 
-        app.run_polling(
-            allowed_updates=Update.ALL_TYPES,
-            close_loop=False,
-            stop_signals=[]
-        )
+        app.run_polling()
+
     except KeyboardInterrupt:
         logger.info("বট বন্ধ করা হয়েছে")
         sys.exit(0)
