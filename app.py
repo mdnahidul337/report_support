@@ -2,6 +2,7 @@ import os
 import json
 import logging
 import sys
+import re  # Added missing import
 from datetime import datetime, timedelta
 from telegram import (
     Update,
@@ -373,6 +374,7 @@ def main():
     try:
         app = Application.builder().token(BOT_TOKEN).build()
         
+        # Fixed conversation handler with proper settings
         conv_handler = ConversationHandler(
             entry_points=[CallbackQueryHandler(import_links, pattern="^import_links")],
             states={
@@ -384,6 +386,9 @@ def main():
                 ]
             },
             fallbacks=[CommandHandler("cancel", lambda u,c: ConversationHandler.END)],
+            per_message=True,
+            per_chat=True,
+            per_user=True
         )
 
         app.add_handler(CommandHandler("start", start))
